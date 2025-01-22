@@ -1,5 +1,3 @@
-# Load-Transient-Tool
-
 # Fast Load Transient Tool
 
 The **Load Transient Tool** is a versatile and efficient solution for testing and analyzing voltage regulator performance. It generates fast load steps (~500nsec rise/fall times) by switching a load resistor on and off using a microcontroller and MOSFET. This tool is essential for evaluating regulator control loop behavior, detecting instability, and optimizing performance.
