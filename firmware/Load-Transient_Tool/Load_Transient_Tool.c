@@ -1,150 +1,157 @@
 /****************************************
- * File: Bubble_sensor_OCB100.c
+ * File: Load-Transient-Tool.c
  * Author: Yasir Shahzad
  * Email: yasirshahzad918@gmail.com
  * Company: Mastermind Technologies
- * Created: January 21, 2025
+ * Created: January 22, 2025
  * Version: 1.0
  * Description:
- *      This file contains the main program for controlling a bubble sensor
- *      using PWM signals to calibrate and adjust output voltages. The code
- *      initializes hardware peripherals, reads voltage sensors, and stores
- *      calibration data in EEPROM.
+ *      This file contains the main program for the Load Transient Tool.
+ *      It uses a PIC12F683 microcontroller to generate fast load transients
+ *      using a MOSFET driver. The tool supports configurable duty cycle and
+ *      frequency adjustments for transient load testing.
  *
  * License: MIT License
  ****************************************/
 
 #include <stdbool.h>
 
-#define PWM_FREQ           10000 // 10kHz PWM frequency
-#define NVM_ADDRESS        0x02  // Non-Voltatile memory Address
-#define MAX_CAL_ATTEMPTS   150   // Number of attempts to calibrate
+// Configuration Constants
+#define DEFAULT_FREQ        1000   // Default frequency (Hz)
+#define DEFAULT_DUTY_CYCLE  5     // Default duty cycle (%)
+#define MAX_DUTY_CYCLE      50    // Maximum duty cycle (%)
+#define MIN_DUTY_CYCLE      1   // Minimum duty cycle (%)
+#define FREQ_STEPS          4     // Frequency adjustment steps
 
 typedef unsigned char uint8_t;
+typedef unsigned int uint16_t;
 
-sbit LED1_PIN at GPIO.B1;
-sbit CALI_PIN at GPIO.B3;
-sbit LED2_PIN at GPIO.B5;
+// Pin Definitions
+sbit UP_BUTTON at GPIO.B0;
+sbit DOWN_BUTTON at GPIO.B1;
+sbit FREQ_BUTTON at GPIO.B2;
+sbit MOSFET_GATE at GPIO.B4;
+sbit POWER_LED at GPIO.B5;
 
-uint8_t i = 0;
-float voltage = 0;
-float target_voltage = 0;
-unsigned int dutyCycle = 0;
+// Global Variables
+uint8_t dutyCycle = DEFAULT_DUTY_CYCLE;
+uint16_t frequency = DEFAULT_FREQ;
+bool powerState = false;
 
-bool calibrationSuccess = false;    // Flag for successful calibration
-float closest_voltage = 0;          // Store the closest voltage to the target
-unsigned int closest_dutyCycle = 0; // Store the duty cycle for the closest voltage
-
-// Function prototypes.
+// Function Prototypes
 void init(void);
-void calibrate(void);
-float readVoltage(uint8_t);
+void handleButtons(void);
+void updatePWM(uint16_t freq, uint8_t duty);
+void blinkPowerLED(void);
 
 void main(void)
 {
     init();
 
-    // Load previous dutyCycle value from EEPROM
-    dutyCycle = EEPROM_Read(NVM_ADDRESS);
-
-    PWM1_Init(PWM_FREQ);
-    PWM1_set_Duty(dutyCycle); // 0 to 255
-    PWM1_Start();
+    // Default start-up configuration
+    updatePWM(frequency, dutyCycle);
+    POWER_LED = 1; // Indicate power is ON
+    Delay_ms(1000); // Initial LED indication
 
     while (1)
     {
-        if (CALI_PIN == 0) {
-            Delay_ms(10); // Short debounce delay
-            if (CALI_PIN == 0) {
-                calibrate();
-            }
-        }
+        handleButtons(); // Check and handle button presses
+        // Maintain the load transient generation based on current settings
     }
-}
-
-void init(void)
-{
-    TRISIO = 0b00011001; // GP0 and GP3 as inputs, others as outputs
-    ANSEL  = 0b00010001; // AN0, AN4 (GP0 & GP4) as analog input
-    CMCON0 = 0x07;       // Disable comparators
-    ADC_Init();          // Initialize ADC
-    LED1_PIN = 0;
-    LED2_PIN = 0;
 }
 
 /**
- * @brief Calibrates the output voltage to match the target using PWM.
- *
- * Reads the target voltage from ADC and iteratively adjusts the PWM duty cycle
- * to achieve the closest match. Saves the final duty cycle to EEPROM on success
- * and indicates status using LEDs (LED2 for success, LED1 for failure).
+ * @brief Initializes the hardware peripherals and I/O pins.
  */
-void calibrate(void)
+void init(void)
 {
-    i = 0;
-    LED1_PIN = 0;
-    LED2_PIN = 0;
-    dutyCycle = 0;
+    // Configure GPIO pins
+    TRISIO = 0b00000111; // GP0, GP1, GP2 as inputs (buttons), others as outputs
+    ANSEL  = 0;          // Disable analog functionality
+    CMCON0 = 0x07;       // Disable comparators
 
-    calibrationSuccess  = false;  // Flag for successful calibration
-    closest_voltage = 0;          // Store the closest voltage to the target
-    closest_dutyCycle = 0;        // Store the duty cycle for the closest voltage
+    // Initialize PWM for MOSFET gate drive
+    PWM1_Init(DEFAULT_FREQ);
+    PWM1_Start();
 
-    target_voltage = readVoltage(4);  // Read the target voltage from ADC channel 4
+    // Initialize LED state
+    POWER_LED = 0;
+}
 
-
-
-    while (i < MAX_CAL_ATTEMPTS)
+/**
+ * @brief Handles button presses to adjust duty cycle and frequency.
+ */
+void handleButtons(void)
+{
+    // Adjust duty cycle
+    if (UP_BUTTON == 0)
     {
-        // Set current PWM duty cycle
-        PWM1_set_Duty(dutyCycle);
-        Delay_ms(30);
-
-        // Read current voltage
-        voltage = readVoltage(0);  // Read the voltage from ADC channel 0
-
-        // Check if current voltage is closer to target voltage
-        if (abs(target_voltage - voltage) < abs(target_voltage - closest_voltage) || i == 0)
+        Delay_ms(200); // Debounce delay
+        if (UP_BUTTON == 0 && dutyCycle < MAX_DUTY_CYCLE)
         {
-            closest_voltage = voltage;
-            closest_dutyCycle = dutyCycle;
+            dutyCycle++;
+            updatePWM(frequency, dutyCycle);
+            blinkPowerLED(); // Indicate adjustment
         }
-
-        // Adjust duty cycle to move closer to the target voltage
-        if (voltage < target_voltage) {
-            dutyCycle++; // Increase duty cycle
-        }
-        else if (voltage > target_voltage) {
-            // Check if decreasing duty cycle gets closer to the target voltage
-            if (abs(target_voltage - closest_voltage) < abs(target_voltage - voltage)) {
-                calibrationSuccess  = true;
-                break; // Stop further adjustments if closest is found
-            }
-            else {
-                dutyCycle--; // Decrease duty cycle
-            }
-        }
-
-        i++;
     }
 
-    // Finalize calibration and validate results
-    PWM1_set_Duty(closest_dutyCycle);
-    dutyCycle = closest_dutyCycle;
-
-    if (calibrationSuccess  == true) {
-        // Blink LED2 to indicate success
-        for (i = 0; i < 4; i++) {
-            LED2_PIN = !LED2_PIN;
-            Delay_ms(250);
+    if (DOWN_BUTTON == 0)
+    {
+        Delay_ms(200); // Debounce delay
+        if (DOWN_BUTTON == 0 && dutyCycle > MIN_DUTY_CYCLE)
+        {
+            dutyCycle--;
+            updatePWM(frequency, dutyCycle);
+            blinkPowerLED(); // Indicate adjustment
         }
-        EEPROM_Write(NVM_ADDRESS, dutyCycle);
-    } else {
-        LED1_PIN = 1;  // Turn on LED1 to indicate failure
+    }
+
+    // Adjust frequency
+    if (FREQ_BUTTON == 0)
+    {
+        Delay_ms(200); // Debounce delay
+        if (FREQ_BUTTON == 0)
+        {
+            // Cycle through frequency steps (15Hz, 61Hz, 244Hz, 976Hz)
+            switch (frequency)
+            {
+                case 15:
+                    frequency = 61;
+                    break;
+                case 61:
+                    frequency = 244;
+                    break;
+                case 244:
+                    frequency = 976;
+                    break;
+                default:
+                    frequency = 15;
+            }
+            updatePWM(frequency, dutyCycle);
+            blinkPowerLED(); // Indicate adjustment
+        }
     }
 }
 
-float readVoltage(uint8_t adcChannel)
+/**
+ * @brief Updates the PWM settings for the MOSFET gate drive.
+ * @param freq The desired frequency (Hz).
+ * @param duty The desired duty cycle (%).
+ */
+void updatePWM(uint16_t freq, uint8_t duty)
 {
-    return ADC_Read(adcChannel) * (5.0 / 1023.0);
+    PWM1_Init(freq);
+    PWM1_set_Duty(duty * (255 / 100)); // Convert percentage to 8-bit value
+    PWM1_Start();
+}
+
+/**
+ * @brief Blinks the power LED to indicate an adjustment.
+ */
+void blinkPowerLED(void)
+{
+    POWER_LED = 1;
+    Delay_ms(200);
+    POWER_LED = 0;
+    Delay_ms(200);
 }
