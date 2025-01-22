@@ -1,17 +1,4 @@
 /****************************************
- * File: Load-Transient-Tool.c
- * Author: Yasir Shahzad
- * Email: yasirshahzad918@gmail.com
- * Company: Mastermind Technologies
- * Created: January 22, 2025
- * Version: 1.0
- * Description:
- *      This file contains the main program for the Load Transient Tool.
- *      It uses a PIC12F683 microcontroller to generate fast load transients
- *      using a MOSFET driver. The tool supports configurable duty cycle and
- *      frequency adjustments for transient load testing.
- *
- * License: MIT License/****************************************
  * File: Load_Transient_Tool.c
  * Author: Yasir Shahzad
  * Email: yasirshahzad918@gmail.com
