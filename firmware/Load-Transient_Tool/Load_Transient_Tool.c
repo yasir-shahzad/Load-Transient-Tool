@@ -11,32 +11,49 @@
  *      using a MOSFET driver. The tool supports configurable duty cycle and
  *      frequency adjustments for transient load testing.
  *
+ * License: MIT License/****************************************
+ * File: Load_Transient_Tool.c
+ * Author: Yasir Shahzad
+ * Email: yasirshahzad918@gmail.com
+ * Company: Mastermind Technologies
+ * Created: January 22, 2025
+ * Version: 1.0
+ * Description:
+ *      This file contains the main program for the Load Transient Tool.
+ *      It uses a PIC12F683 microcontroller to generate fast load transients
+ *      using a MOSFET driver. The tool supports configurable duty cycle and
+ *      frequency adjustments for transient load testing.
+ *
  * License: MIT License
  ****************************************/
 
 #include <stdbool.h>
 
 // Configuration Constants
-#define DEFAULT_FREQ        1000   // Default frequency (Hz)
-#define DEFAULT_DUTY_CYCLE  5     // Default duty cycle (%)
-#define MAX_DUTY_CYCLE      50    // Maximum duty cycle (%)
-#define MIN_DUTY_CYCLE      1   // Minimum duty cycle (%)
-#define FREQ_STEPS          4     // Frequency adjustment steps
+#define FREQ_15         15    // 15 Hz frequency
+#define FREQ_61         61    // 61 Hz frequency
+#define FREQ_244        244   // Default frequency (244 Hz)
+#define FREQ_976        976   // 976 Hz frequency
+
+#define DEFAULT_FREQ    FREQ_244 // Default frequency
+#define DEFAULT_DUTY    5        // Default duty cycle (%)
+#define MAX_DUTY        50       // Maximum duty cycle (%)
+#define MIN_DUTY        1        // Minimum duty cycle (%)
+
 
 typedef unsigned char uint8_t;
 typedef unsigned int uint16_t;
 
 // Pin Definitions
-sbit UP_BUTTON at GPIO.B0;
-sbit DOWN_BUTTON at GPIO.B1;
-sbit FREQ_BUTTON at GPIO.B2;
-sbit MOSFET_GATE at GPIO.B4;
-sbit POWER_LED at GPIO.B5;
+sbit UP_BUTTON   at GPIO.B0; // UP button
+sbit DOWN_BUTTON at GPIO.B1; // DOWN button
+sbit FREQ_BUTTON at GPIO.B2; // Frequency adjustment button
+sbit MOSFET_GATE at GPIO.B4; // PWM output to MOSFET gate
+sbit POWER_LED   at GPIO.B5; // Power indicator LED
 
 // Global Variables
-uint8_t dutyCycle = DEFAULT_DUTY_CYCLE;
+uint8_t dutyCycle = DEFAULT_DUTY;
 uint16_t frequency = DEFAULT_FREQ;
-bool powerState = false;
 
 // Function Prototypes
 void init(void);
@@ -56,7 +73,6 @@ void main(void)
     while (1)
     {
         handleButtons(); // Check and handle button presses
-        // Maintain the load transient generation based on current settings
     }
 }
 
@@ -83,11 +99,11 @@ void init(void)
  */
 void handleButtons(void)
 {
-    // Adjust duty cycle
+    // Adjust duty cycle UP
     if (UP_BUTTON == 0)
     {
-        Delay_ms(200); // Debounce delay
-        if (UP_BUTTON == 0 && dutyCycle < MAX_DUTY_CYCLE)
+        Delay_ms(20); // Debounce delay
+        if (UP_BUTTON == 0 && dutyCycle < MAX_DUTY)
         {
             dutyCycle++;
             updatePWM(frequency, dutyCycle);
@@ -95,10 +111,11 @@ void handleButtons(void)
         }
     }
 
+    // Adjust duty cycle DOWN
     if (DOWN_BUTTON == 0)
     {
-        Delay_ms(200); // Debounce delay
-        if (DOWN_BUTTON == 0 && dutyCycle > MIN_DUTY_CYCLE)
+        Delay_ms(20); // Debounce delay
+        if (DOWN_BUTTON == 0 && dutyCycle > MIN_DUTY)
         {
             dutyCycle--;
             updatePWM(frequency, dutyCycle);
@@ -109,24 +126,19 @@ void handleButtons(void)
     // Adjust frequency
     if (FREQ_BUTTON == 0)
     {
-        Delay_ms(200); // Debounce delay
+        Delay_ms(20); // Debounce delay
         if (FREQ_BUTTON == 0)
         {
-            // Cycle through frequency steps (15Hz, 61Hz, 244Hz, 976Hz)
-            switch (frequency)
-            {
-                case 15:
-                    frequency = 61;
-                    break;
-                case 61:
-                    frequency = 244;
-                    break;
-                case 244:
-                    frequency = 976;
-                    break;
-                default:
-                    frequency = 15;
-            }
+            // Cycle through predefined frequency steps
+            if (frequency == FREQ_15)
+                frequency = FREQ_61;
+            else if (frequency == FREQ_61)
+                frequency = FREQ_244;
+            else if (frequency == FREQ_244)
+                frequency = FREQ_976;
+            else
+                frequency = FREQ_15;
+
             updatePWM(frequency, dutyCycle);
             blinkPowerLED(); // Indicate adjustment
         }
@@ -135,12 +147,34 @@ void handleButtons(void)
 
 /**
  * @brief Updates the PWM settings for the MOSFET gate drive.
- * @param freq The desired frequency (Hz).
+ * @param freq The desired frequency (Hz) (predefined constant).
  * @param duty The desired duty cycle (%).
  */
 void updatePWM(uint16_t freq, uint8_t duty)
 {
-    PWM1_Init(freq);
+    // Set the frequency based on predefined steps
+    if (freq == FREQ_15)
+    {
+        PWM1_Init(FREQ_15); // Use constant frequency for 15 Hz
+    }
+    else if (freq == FREQ_61)
+    {
+        PWM1_Init(FREQ_61); // Use constant frequency for 61 Hz
+    }
+    else if (freq == FREQ_244)
+    {
+        PWM1_Init(FREQ_244); // Use constant frequency for 244 Hz
+    }
+    else if (freq == FREQ_976)
+    {
+        PWM1_Init(FREQ_976); // Use constant frequency for 976 Hz
+    }
+    else
+    {
+        PWM1_Init(FREQ_244); // Default to 244 Hz if invalid frequency
+    }
+
+    // Update the duty cycle
     PWM1_set_Duty(duty * (255 / 100)); // Convert percentage to 8-bit value
     PWM1_Start();
 }
