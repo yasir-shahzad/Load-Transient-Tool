@@ -129,16 +129,21 @@ void handleButtons(void)
         Delay_ms(20); // Debounce delay
         if (FREQ_BUTTON == 0)
         {
-            // Cycle through predefined frequency steps
-            if (frequency == FREQ_15)
-                frequency = FREQ_61;
-            else if (frequency == FREQ_61)
-                frequency = FREQ_244;
-            else if (frequency == FREQ_244)
-                frequency = FREQ_976;
-            else
-                frequency = FREQ_15;
-
+            // Cycle through frequency steps (15Hz, 61Hz, 244Hz, 976Hz)
+            switch (frequency)
+            {
+                case FREQ_15:
+                    frequency = FREQ_61;
+                    break;
+                case FREQ_61:
+                    frequency = FREQ_244;
+                    break;
+                case FREQ_244:
+                    frequency = FREQ_976;
+                    break;
+                default:
+                    frequency = FREQ_15;
+            }
             updatePWM(frequency, dutyCycle);
             blinkPowerLED(); // Indicate adjustment
         }
@@ -153,27 +158,24 @@ void handleButtons(void)
 void updatePWM(uint16_t freq, uint8_t duty)
 {
     // Set the frequency based on predefined steps
-    if (freq == FREQ_15)
+    switch (freq)
     {
+    case FREQ_15:
         PWM1_Init(FREQ_15); // Use constant frequency for 15 Hz
-    }
-    else if (freq == FREQ_61)
-    {
+        break;
+    case FREQ_61:
         PWM1_Init(FREQ_61); // Use constant frequency for 61 Hz
-    }
-    else if (freq == FREQ_244)
-    {
+        break;
+    case FREQ_244:
         PWM1_Init(FREQ_244); // Use constant frequency for 244 Hz
-    }
-    else if (freq == FREQ_976)
-    {
+        break;
+    case FREQ_976:
         PWM1_Init(FREQ_976); // Use constant frequency for 976 Hz
-    }
-    else
-    {
+        break;
+    default:
         PWM1_Init(FREQ_244); // Default to 244 Hz if invalid frequency
+        break;
     }
-
     // Update the duty cycle
     PWM1_set_Duty(duty * (255 / 100)); // Convert percentage to 8-bit value
     PWM1_Start();
