@@ -174,7 +174,7 @@ void updatePWM(uint16_t freq, uint8_t duty)
 void blinkPowerLED(void)
 {
     POWER_LED = 1;
-    Delay_ms(200);
+    Delay_ms(100);
     POWER_LED = 0;
-    Delay_ms(200);
+    Delay_ms(100);
 }
