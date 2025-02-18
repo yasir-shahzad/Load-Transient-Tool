@@ -4,7 +4,7 @@
  * Email: yasirshahzad918@gmail.com
  * Company: Mastermind Technologies
  * Created: January 22, 2025
- * Version: 1.0
+ * Version: 1.1
  * Description:
  *      This file contains the main program for the Load Transient Tool.
  *      It uses a PIC12F683 microcontroller to generate fast load transients
@@ -26,40 +26,49 @@
 #define DEFAULT_DUTY    5        // Default duty cycle (%)
 #define MAX_DUTY        50       // Maximum duty cycle (%)
 #define MIN_DUTY        1        // Minimum duty cycle (%)
+#define SEC_US         76150     // SEC to Micro Second Scale
 
 
 typedef unsigned char uint8_t;
 typedef unsigned int uint16_t;
+ typedef unsigned long uint32_t;
 
 // Pin Definitions
-sbit UP_BUTTON   at GPIO.B0; // UP button
-sbit DOWN_BUTTON at GPIO.B1; // DOWN button
-sbit FREQ_BUTTON at GPIO.B2; // Frequency adjustment button
-sbit MOSFET_GATE at GPIO.B4; // PWM output to MOSFET gate
-sbit POWER_LED   at GPIO.B5; // Power indicator LED
+sbit UP_BUTTON   at GPIO.B3; // UP button
+sbit DOWN_BUTTON at GPIO.B4; // DOWN button
+sbit FREQ_BUTTON at GPIO.B5; // Frequency adjustment button
+sbit MOSFET_GATE at GPIO.B2; // PWM output to MOSFET gate
+sbit POWER_LED   at GPIO.B1; // Power indicator LED
 
 // Global Variables
 uint8_t dutyCycle = DEFAULT_DUTY;
 uint16_t frequency = DEFAULT_FREQ;
+uint32_t period;
+uint32_t onTime;
+uint32_t offTime;
+bool update = true;
 
 // Function Prototypes
 void init(void);
 void handleButtons(void);
-void updatePWM(uint16_t freq, uint8_t duty);
+void handleFreq(void);
+void generatePWM(uint16_t freq, uint8_t duty);
 void blinkPowerLED(void);
+void customDelay_us(uint32_t time);
 
 void main(void)
 {
     init();
 
     // Default start-up configuration
-    updatePWM(frequency, dutyCycle);
-    POWER_LED = 1; // Indicate power is ON
+    POWER_LED = 1;  // Indicate power is ON
     Delay_ms(1000); // Initial LED indication
+    POWER_LED = 0;
 
     while (1)
     {
         handleButtons(); // Check and handle button presses
+        handleFreq();
     }
 }
 
@@ -69,16 +78,15 @@ void main(void)
 void init(void)
 {
     // Configure GPIO pins
-    TRISIO = 0b00000111; // GP0, GP1, GP2 as inputs (buttons), others as outputs
+    TRISIO = 0b00111000; // GP0, GP1, GP2 as inputs (buttons), others as outputs
     ANSEL  = 0;          // Disable analog functionality
     CMCON0 = 0x07;       // Disable comparators
 
-    // Initialize PWM for MOSFET gate drive
-    PWM1_Init(DEFAULT_FREQ);
-    PWM1_Start();
-
     // Initialize LED state
     POWER_LED = 0;
+    
+    // Calculate initial period for frequency
+    period = (SEC_US / DEFAULT_FREQ); // Convert Hz to microseconds
 }
 
 /**
@@ -93,8 +101,8 @@ void handleButtons(void)
         if (UP_BUTTON == 0 && dutyCycle < MAX_DUTY)
         {
             dutyCycle++;
-            updatePWM(frequency, dutyCycle);
             blinkPowerLED(); // Indicate adjustment
+            update = true; // Set update flag
         }
     }
 
@@ -105,8 +113,8 @@ void handleButtons(void)
         if (DOWN_BUTTON == 0 && dutyCycle > MIN_DUTY)
         {
             dutyCycle--;
-            updatePWM(frequency, dutyCycle);
             blinkPowerLED(); // Indicate adjustment
+            update = true; // Set update flag
         }
     }
 
@@ -131,41 +139,29 @@ void handleButtons(void)
                 default:
                     frequency = FREQ_15;
             }
-            updatePWM(frequency, dutyCycle);
+            period = (SEC_US / frequency); // Update period calculation
             blinkPowerLED(); // Indicate adjustment
+            update = true; // Set update flag
         }
     }
 }
 
 /**
- * @brief Updates the PWM settings for the MOSFET gate drive.
- * @param freq The desired frequency (Hz) (predefined constant).
+ * @brief Generates PWM signal using delay-based timing.
+ * @param freq The desired frequency (Hz).
  * @param duty The desired duty cycle (%).
  */
-void updatePWM(uint16_t freq, uint8_t duty)
+void handleFreq(void)
 {
-    // Set the frequency based on predefined steps
-    switch (freq)
-    {
-    case FREQ_15:
-        PWM1_Init(FREQ_15); // Use constant frequency for 15 Hz
-        break;
-    case FREQ_61:
-        PWM1_Init(FREQ_61); // Use constant frequency for 61 Hz
-        break;
-    case FREQ_244:
-        PWM1_Init(FREQ_244); // Use constant frequency for 244 Hz
-        break;
-    case FREQ_976:
-        PWM1_Init(FREQ_976); // Use constant frequency for 976 Hz
-        break;
-    default:
-        PWM1_Init(FREQ_244); // Default to 244 Hz if invalid frequency
-        break;
+    if(update){
+    onTime = (period * dutyCycle) / 100; // ON time in microseconds
+    offTime = period - onTime; // OFF time in microseconds
+    update = false; // Reset update flag
     }
-    // Update the duty cycle
-    PWM1_set_Duty(duty * (255 / 100)); // Convert percentage to 8-bit value
-    PWM1_Start();
+    MOSFET_GATE = 1;
+    customDelay_us(onTime);
+    MOSFET_GATE = 0;
+    customDelay_us(offTime);
 }
 
 /**
@@ -177,4 +173,16 @@ void blinkPowerLED(void)
     Delay_ms(100);
     POWER_LED = 0;
     Delay_ms(100);
+}
+
+/**
+ * @brief Custom delay function for microseconds.
+ * @param time Delay duration in microseconds.
+ */
+void customDelay_us(uint32_t time)
+{
+    while (time--)
+    {
+        asm nop;  // 1 cycle (1 �s)
+    }
 }
